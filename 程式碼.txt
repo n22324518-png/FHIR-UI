@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>醫養聯網安全共享平台 (FHIR Prototype)</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --dark: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --border: #334155;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--dark); color: var(--text-main); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        /* 頂部導覽列 */
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; }
+        .badge { background: #3b82f633; color: #60a5fa; padding: 4px 10px; border-radius: 9999px; font-size: 0.85rem; border: 1px solid #3b82f655; }
+        
+        /* 步驟指示器 */
+        .stepper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px; }
+        .step-item { background: var(--card-bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border); text-align: center; font-size: 0.85rem; color: var(--text-sub); transition: 0.3s; }
+        .step-item.active { border-color: var(--primary); color: #fff; background: #1e3a8a44; font-weight: bold; }
+        .step-item.completed { border-color: var(--success); color: #4ade80; }
+
+        /* 模組區塊 */
+        .stage-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: none; }
+        .stage-card.show { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        h2 { font-size: 1.25rem; margin-bottom: 15px; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        /* 表單與控制項 */
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.8rem; color: var(--text-sub); margin-bottom: 4px; }
+        input, select, textarea { width: 100%; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 0.9rem; }
+        .code-box { background: #090d16; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; color: #38bdf8; white-space: pre-wrap; height: 180px; overflow-y: auto; }
+
+        /* 按鈕樣式 */
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--primary); color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-size: 0.9rem; cursor: pointer; font-weight: 500; transition: 0.2s; margin-top: 10px; }
+        .btn:hover { opacity: 0.9; }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-sub); }
+
+        /* 資安 Log 與 標籤 */
+        .log-box { background: #000; color: #4ade80; font-family: monospace; font-size: 0.78rem; padding: 12px; border-radius: 6px; height: 140px; overflow-y: auto; border: 1px solid #1e293b; }
+        .tag-row { display: flex; gap: 8px; margin: 10px 0; }
+        .status-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; }
+        .status-tag.green { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+        .status-tag.red { background: #450a0a; color: #f87171; border: 1px solid #991b1b; }
+
+        /* 浮動推播 Alert */
+        #alert-box { position: fixed; top: 20px; right: 20px; background: #7f1d1d; border: 1px solid var(--danger); color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h2>醫養聯網：急診安全共享平台</h2>
+            <div style="font-size: 0.8rem; color: var(--text-sub);">HL7 FHIR x 資安黑白名單 x AI CDSS 派案</div>
+        </div>
+        <span class="badge">原型展示系統 v1.0</span>
+    </header>
+
+    <!-- 步驟條 -->
+    <div class="stepper">
+        <div class="step-item active" id="step-tab-1">1. 急診打包與遮蔽</div>
+        <div class="step-item" id="step-tab-2">2. 雲端資安與 Log</div>
+        <div class="step-item" id="step-tab-3">3. 照管推播與解密</div>
+        <div class="step-item" id="step-tab-4">4. AI 計畫生成</div>
+    </div>
+
+    <!-- 階段 1：醫院急診端 -->
+    <div class="stage-card show" id="stage-1">
+        <h2>🏥 步驟一：醫院 HIS 急診端（FHIR 轉譯與黑名單）</h2>
+        <div class="grid-2">
+            <div>
+                <div class="form-group"><label>患者姓名</label><input type="text" id="p-name" value="張阿嬤" disabled></div>
+                <div class="form-group"><label>身分證字號</label><input type="text" id="p-id" value="A287654321" disabled></div>
+                <div class="form-group"><label>ICD-10 診斷</label><input type="text" id="p-diag" value="S72.0 股骨頸骨折"></div>
+                <div class="form-group"><label>生理數據 (Observation)</label><input type="text" id="p-obs" value="BP: 165/95 mmHg, HR: 92 bpm"></div>
+                <button class="btn btn-success" onclick="processFHIR()">一鍵轉譯 FHIR 並啟動去識別化</button>
+            </div>
+            <div>
+                <label>FHIR Resource JSON (預設去識別化/代碼化)</label>
+                <div class="code-box" id="fhir-json">// 尚未生成資料...</div>
+                <button class="btn" id="btn-upload" style="display:none;" onclick="goToStage(2)">上傳至雲端伺服器 ➔</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 階段 2：雲端資安中樞 -->
+    <div class="stage-card" id="stage-2">
+        <h2>🛡️ 步驟二：雲端資安中樞（IP 防護與 Log 留痕）</h2>
+        <div class="tag-row">
+            <span class="status-tag green">✔ IP 白名單通過: 192.168.1.104 (台北特約醫院)</span>
+            <span class="status-tag red">✖ IP 黑名單阻擋: 218.45.xx.xx (異常境外來源)</span>
+        </div>
+        <div style="margin: 15px 0;">
+            <label>即時 Audit Log 稽核日誌 (不可篡改軌跡)</label>
+            <div class="log-box" id="audit-log">
+[SYSTEM INIT] AWS Security Gateway is running...
+[SECURITY] IP Allowlist Policy check: PASSED.
+            </div>
+        </div>
+        <button class="btn" onclick="triggerPushNotification()">驗證通過，發送通報至照管平台 ➔</button>
+    </div>
+
+    <!-- 階段 3：照管平台端 -->
+    <div class="stage-card" id="stage-3">
+        <h2>📋 步驟三：照管平台端（秒級通報與金鑰還原）</h2>
+        <div class="grid-2">
+            <div>
+                <p style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-sub);">接收到的去識別化就醫封包：</p>
+                <div class="form-group"><label>代碼標識 (Patient UUID)</label><input type="text" id="res-uuid" value="Patient/UUID-8a9f-3b7c" disabled></div>
+                <div class="form-group"><label>診斷項目</label><input type="text" value="S72.0 股骨頸骨折" disabled></div>
+                <div class="form-group"><label>輸入身分授權金鑰 (醫事憑證驗證)</label><input type="password" id="auth-key" placeholder="請輸入安全金鑰 (預設: 1234)"></div>
+                <button class="btn btn-success" onclick="decryptIdentity()">金鑰解密與身分對照</button>
+            </div>
+            <div>
+                <label>實名病歷還原檢視</label>
+                <div style="background: #0f172a; border: 1px solid var(--border); padding: 15px; border-radius: 6px; min-height: 180px;" id="patient-card">
+                    <p style="color: var(--text-sub);">請先進行授權驗證以解鎖實名個資...</p>
+                </div>
+                <button class="btn" id="btn-to-ai" style="display:none;" onclick="goToStage(4)">啟動 AI 照顧決策評估 ➔</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 階段 4：AI CDSS 輔助 -->
+    <div class="stage-card" id="stage-4">
+        <h2>🤖 步驟四：AI 臨床決策輔助 (CDSS 最小化讀取)</h2>
+        <div class="grid-2">
+            <div>
+                <div class="status-tag green" style="margin-bottom: 12px;">✔ AI 欄位白名單已鎖定：僅讀取診斷碼與 Observation 數據</div>
+                <p style="font-size: 0.85rem; color: var(--text-sub); line-height: 1.5; margin-bottom: 15px;">
+                    AI 運算模型在去識別化狀態下進行風險分級與派案推論，個資法合規最小化利用，輔助個管員制定連續照顧計畫。
+                </p>
+                <button class="btn btn-primary" onclick="generateAIPlan()">AI 自動生成連續性照護計畫</button>
+            </div>
+            <div>
+                <label>出院銜接與社區復健計畫草案 (實時生成)</label>
+                <div class="code-box" id="ai-output" style="color: #e2e8f0; line-height: 1.4;">等待 AI 運算...</div>
+                <button class="btn btn-success" id="btn-complete" style="display:none;" onclick="alert('流程完成！已成功對接黃金銜接期社區資源。')">✔ 派案確認並儲存計畫</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 右上角警示彈窗 -->
+<div id="alert-box">
+    <strong>⚠️ 緊急通報！</strong>
+    <p style="font-size: 0.85rem; margin-top: 4px;">轄區長輩急診就醫通知已送達照管中樞 (UUID-8a9f-3b7c)</p>
+</div>
+
+<script>
+    // 步驟 1: FHIR 轉譯與黑名單去識別化
+    function processFHIR() {
+        const fhirData = {
+            resourceType: "Bundle",
+            id: "bundle-emergency-" + Math.floor(Math.random() * 1000),
+            entry: [
+                {
+                    resource: {
+                        resourceType: "Patient",
+                        id: "UUID-8a9f-3b7c",
+                        name: "[MASKED_BY_BLOCKLIST]",
+                        identifier: "[MASKED_BY_BLOCKLIST]"
+                    }
+                },
+                {
+                    resource: {
+                        resourceType: "Condition",
+                        code: document.getElementById('p-diag').value
+                    }
+                },
+                {
+                    resource: {
+                        resourceType: "Observation",
+                        value: document.getElementById('p-obs').value
+                    }
+                }
+            ]
+        };
+        document.getElementById('fhir-json').innerText = JSON.stringify(fhirData, null, 2);
+        document.getElementById('btn-upload').style.display = 'inline-flex';
+    }
+
+    // 切換畫面步驟
+    function goToStage(stageNum) {
+        document.querySelectorAll('.stage-card').forEach(el => el.classList.remove('show'));
+        document.querySelectorAll('.step-item').forEach(el => el.classList.remove('active'));
+
+        document.getElementById(`stage-${stageNum}`).classList.add('show');
+        document.getElementById(`step-tab-${stageNum}`).classList.add('active');
+
+        for (let i = 1; i < stageNum; i++) {
+            document.getElementById(`step-tab-${i}`).classList.add('completed');
+        }
+
+        if (stageNum === 2) {
+            appendLog("[TRANSMIT] FHIR Bundle uploaded from Hospital Gateway (192.168.1.104).");
+            appendLog("[AUDIT] Record #88214 written to immutable Audit Log.");
+            appendLog("[TRIGGER] Critical ICD-10 'S72.0' identified. WebSocket ready.");
+        }
+    }
+
+    function appendLog(text) {
+        const box = document.getElementById('audit-log');
+        const time = new Date().toLocaleTimeString();
+        box.innerHTML += `\n[${time}] ${text}`;
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // 步驟 2 ➔ 步驟 3: 觸發推播
+    function triggerPushNotification() {
+        const alertBox = document.getElementById('alert-box');
+        alertBox.style.display = 'block';
+        setTimeout(() => { alertBox.style.display = 'none'; }, 3500);
+        goToStage(3);
+    }
+
+    // 步驟 3: 金鑰還原身分
+    function decryptIdentity() {
+        const key = document.getElementById('auth-key').value;
+        const card = document.getElementById('patient-card');
+        if (key === "1234") {
+            card.innerHTML = `
+                <div style="color: #4ade80; font-weight: bold; margin-bottom: 8px;">✔ 憑證解密成功！身分還原對照完成</div>
+                <p><b>姓名：</b> 張阿嬤 (80 歲)</p>
+                <p><b>身分證字號：</b> A287654321</p>
+                <p><b>聯絡電話：</b> 0912-345-678</p>
+                <p><b>轄區狀態：</b> 萬華區個案 (負責個管員: 王專員)</p>
+            `;
+            document.getElementById('btn-to-ai').style.display = 'inline-flex';
+        } else {
+            alert('金鑰錯誤！(請輸入測試金鑰: 1234)');
+        }
+    }
+
+    // 步驟 4: AI 打字機效果生成計畫
+    function generateAIPlan() {
+        const planText = `【AI CDSS 出院準備與連續照顧建議書】\n
+▶ 評估等級：高風險長輩 (股骨頸骨折 / 高血壓)\n
+▶ 建議銜接資源：
+  1. 復健服務：出院 48 小時內啟動社區居家物理治療 (PT) 評估。
+  2. 環境評估：申請住家防跌無障礙扶手與防滑設施。
+  3. 居服派案：術後第一個月安排居家服務員協助日常起居。\n
+▶ 黃金 24 小時目標：已將推薦表單同步匯入個管員派案庫。`;
+
+        const box = document.getElementById('ai-output');
+        box.innerText = "";
+        let i = 0;
+        const timer = setInterval(() => {
+            box.innerText += planText.charAt(i);
+            i++;
+            if (i >= planText.length) {
+                clearInterval(timer);
+                document.getElementById('btn-complete').style.display = 'inline-flex';
+            }
+        }, 20);
+    }
+</script>
+</body>
+</html>
